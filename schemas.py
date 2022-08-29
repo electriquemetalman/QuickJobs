@@ -44,7 +44,19 @@ class Create_user (BaseModel):
                 "email": "email",
                 "hashed_password": "hashed_password"
             }
-        }        
+        }
+
+class Login_user (BaseModel):
+    email: EmailStr
+    hashed_password: str
+    class Config:
+        orm_mode=True
+        schema_extra = {
+            "example": {
+                "email": "email",
+                "hashed_password": "hashed_password"
+            }
+        }                
 
 class UserInDB(User):
     hashed_password: str    

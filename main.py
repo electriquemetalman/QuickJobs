@@ -30,11 +30,10 @@ def get_db():
         yield db
     finally:
         db.close()
-"""
+
 #verify hashed password
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
-"""
 
 #get password hashed
 def get_password_hash(password):
@@ -42,7 +41,8 @@ def get_password_hash(password):
 
 #get user by email
 def get_user_by_email(email: str, db: Session ):
-    return db.query(models.User).filter(models.User.email == email).first()  
+    return db.query(models.User).filter(models.User.email == email).first() 
+     
 
 """
 #get user
@@ -143,6 +143,21 @@ def create_user(User: schemas.Create_user, db: Session = Depends(get_db)):
     except:
         raise HTTPException(status_code=404, detail="User have note added")
 
+@app.post("/api/v1/login")
+def login(User: schemas.Login_user, db: Session = Depends(get_db)):
+    try:
+        email = User.email
+        in_pass = User.hashed_password
+        exist_user = get_user_by_email(email, db)
+        password = exist_user.hashed_password
+        if not exist_user:
+            return "email or password incorrect"
+        if not verify_password(in_pass, password):
+            return "email or password incorrect" 
+        return  "user are authenticate"    
+    except:    
+        raise HTTPException(status_code=404, detail="authentification faild") 
+        
 
 @app.get("/api/v1/list_publication")
 def ListPublication(db: Session = Depends(get_db)):
