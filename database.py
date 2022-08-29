@@ -3,8 +3,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 
-engine = create_engine('sqlite:///todo.db')
+engine = create_engine('sqlite:///quickJob.sql', connect_args={"check_same_thread": False})
+
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 Base = declarative_base()
-
-SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
