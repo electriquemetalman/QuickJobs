@@ -4,3 +4,5 @@ mangum
 python-multipart
 python-jose
 passlib
+python-psycopg2
+sqlalchemy
