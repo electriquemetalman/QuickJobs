@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta
+import email
+import time
 from operator import truediv
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm,HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
@@ -9,11 +11,11 @@ from database import Base, engine, SessionLocal
 
 import models
 import schemas
-"""
+
 SECRET_KEY = "2593fe453fd1c20c24068fc1af5575f1e8cb1a29f4d81d277129fe5c4694a942"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-"""
+
 Base.metadata.create_all(engine)
 
 #start call fonction bcrypt
@@ -21,9 +23,9 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 app = FastAPI()
 
-"""
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-"""
+
 def get_db():
     db = SessionLocal()
     try:
@@ -42,6 +44,9 @@ def get_password_hash(password):
 #get user by email
 def get_user_by_email(email: str, db: Session ):
     return db.query(models.User).filter(models.User.email == email).first() 
+
+def get_user_by_id(user_id: int, db: Session ):
+    return db.query(models.User).filter(models.User.id == user_id).filter(models.User.type == "employeur").first()    
      
 
 """
@@ -51,17 +56,6 @@ def get_user(username: str, UserInDB: schemas.UserInDB, db: Session = Depends(ge
     if user:
         user_dict = user.firs_name
         return UserInDB(**user_dict)         
-"""
-"""
-#authenticate user
-def authenticate_user(username: str, password: str, db: Session = Depends(get_db)):
-    user = get_user(username)
-    if not user:
-        return False
-    if not verify_password(password, user.hashed_password):
-        return False
-    return user
-"""
 """
 #create access token
 def create_access_token(data: dict, expires_delta: timedelta):
@@ -73,10 +67,10 @@ def create_access_token(data: dict, expires_delta: timedelta):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt    
-"""
-"""
+
+
 #get curent user
-async def get_current_user(TokenData: schemas.TokenData, token: str = Depends(oauth2_scheme)):
+async def get_current_user(TokenData: schemas.TokenData, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -84,17 +78,18 @@ async def get_current_user(TokenData: schemas.TokenData, token: str = Depends(oa
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
+        email: str = payload.get("sub")
+        if email is None:
             raise credentials_exception
-        token_data = TokenData(username=username)
+        token_data = TokenData(email=email)
     except JWTError:
         raise credentials_exception
-    user = get_user(username=token_data.firs_name)
+    email=token_data.email    
+    user = get_user_by_email(email, db)
     if user is None:
         raise credentials_exception
     return user
-"""
+
 """
 #get curent active user
 async def get_current_active_user(current_user: schemas.User = Depends(get_current_user)):
@@ -121,6 +116,7 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
+    
 
 @app.post("/api/v1/create_user")
 def create_user(User: schemas.Create_user, db: Session = Depends(get_db)):
@@ -143,7 +139,7 @@ def create_user(User: schemas.Create_user, db: Session = Depends(get_db)):
     except:
         raise HTTPException(status_code=404, detail="User have note added")
 
-@app.post("/api/v1/login")
+@app.post("/api/v1/login", response_model=schemas.Token)
 def login(User: schemas.Login_user, db: Session = Depends(get_db)):
     try:
         email = User.email
@@ -151,18 +147,34 @@ def login(User: schemas.Login_user, db: Session = Depends(get_db)):
         exist_user = get_user_by_email(email, db)
         password = exist_user.hashed_password
         if not exist_user:
-            return "email or password incorrect"
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
         if not verify_password(in_pass, password):
-            return "email or password incorrect" 
-        return  "user are authenticate"    
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect username or password",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": exist_user.email}, expires_delta=access_token_expires
+        )     
+        return  {"access_token": access_token, "token_type": "bearer"}    
     except:    
-        raise HTTPException(status_code=404, detail="authentification faild") 
+        raise HTTPException(status_code=404, detail="Incorrect username or password",headers={"WWW-Authenticate": "Bearer"}) 
         
+@app.get("/api/v1/get_all_user")
+def get_all_user(db: Session = Depends(get_db)):
+    return db.query(models.User).all()
+
 
 @app.get("/api/v1/list_publication")
 def ListPublication(db: Session = Depends(get_db)):
     try:
-        publication = db.query(models.Publication).filter(models.Publication.is_validate == True).all()
+        publication = db.query(models.Publication).filter(models.Publication.is_validate == True).filter(models.Publication.status == "activer").all()
         return publication
     except:
         raise HTTPException(status_code=404, detail="publication not found")    
@@ -170,24 +182,51 @@ def ListPublication(db: Session = Depends(get_db)):
 @app.get("/api/v1/all_publication")
 def AllPublication(db: Session = Depends(get_db)):
     try:
-        publication = db.query(models.Publication).all()
+        publication = db.query(models.Publication).filter(models.Publication.status == "activer").all()
         return publication
     except:
-        raise HTTPException(status_code=404, detail="publication not found")          
-
-@app.post("/api/v1/add_publication")
-def create_publication(Publication: schemas.PublicationCreate, db: Session = Depends(get_db)):
+        raise HTTPException(status_code=404, detail="publication not found")  
+"""
+def add_publicationAutor(user_id: int, publication: int, db: Session ):
+    new_publicationAutor = models.PublicationAuthor(
+                user_id = user_id,
+                publication_id = publication
+            )                
+    db.add (new_publicationAutor)
+    db.commit()
+    db.refresh (new_publicationAutor)
+"""
+@app.get("/api/v1/user/{user_id}/all_publication")
+def all_user_Publication(user_id: int, db: Session = Depends(get_db)):
     try:
-        new_publication = models.Publication(
-                intituler = Publication.intituler,
-                description = Publication.description
-            )
-        db.add(new_publication)
-        db.commit()
-        db.refresh(new_publication)    
-        return new_publication
+        publication = db.query(models.Publication).filter(models.Publication.user_id == user_id).filter(models.Publication.is_validate == True).filter(models.Publication.status == "activer").all()
+        return publication
     except:
-        raise HTTPException(status_code=404, detail="publication are not add") 
+        raise HTTPException(status_code=404, detail="publication not found")
+
+@app.post("/api/v1/user/{user_id}/add_publication")
+def create_publication(user_id: int, Publication: schemas.PublicationCreate, db: Session = Depends(get_db)):
+    try:
+        u_id = get_user_by_id(user_id, db)
+        if u_id:
+            new_publication = models.Publication(
+                    intituler = Publication.intituler,
+                    description = Publication.description,
+                    user_id = user_id
+                )       
+            db.add(new_publication)
+            db.commit()
+            db.refresh(new_publication)
+            return new_publication
+        else:
+            return "user dont exist"
+    except:
+        raise HTTPException(status_code=404, detail="publication are not add")    
+
+@app.get("/api/v1/publication")
+def get_allpublication_autor(db: Session = Depends(get_db)):
+    publication_autor = db.query(models.PublicationAuthor).all()
+    return publication_autor      
 
 @app.put("/api/v1/update_publication/{id}")
 def update_publication(id: int, Publication: schemas.PublicationCreate, db: Session = Depends(get_db)):
@@ -202,13 +241,24 @@ def update_publication(id: int, Publication: schemas.PublicationCreate, db: Sess
         raise HTTPException(status_code=404, detail="publication are not update") 
 
 @app.put("/api/v1/validate_publication/{id}")
-def validate_publication(id: int, Publication: schemas.PublicationValidate, db: Session = Depends(get_db)):
+def validate_publication(id: int, db: Session = Depends(get_db)):
     try:
         publication_Object = db.query(models.Publication).get(id)
-        publication_Object.is_validate = Publication.is_validate
+        publication_Object.is_validate = True
         db.commit() 
         db.refresh(publication_Object) 
         return publication_Object
     except:
-        raise HTTPException(status_code=404, detail="publication are not validate")        
+        raise HTTPException(status_code=404, detail="publication are not validate")
+
+@app.put("/api/v1/desebel_publication/{id}")
+def desebel_publication(id: int, db: Session = Depends(get_db)):
+    try:
+        publication_Object = db.query(models.Publication).get(id)
+        publication_Object.status = "desactiver"
+        db.commit() 
+        db.refresh(publication_Object) 
+        return publication_Object
+    except:
+        raise HTTPException(status_code=404, detail="publication are not desabel")                
     

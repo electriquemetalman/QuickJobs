@@ -4,10 +4,17 @@ import datetime
 
 from database import Base
 
+"""
 publication_authors = Table('publication_authors', Base.metadata,
     Column('user_id', ForeignKey('users.id'), primary_key=True),
     Column('publication_id', ForeignKey('publications.id'), primary_key=True)
 )
+"""
+
+class PublicationAuthor(Base):
+    __tablename__ = 'publication_authors'
+    user_id = Column(ForeignKey('users.id'), primary_key=True)
+    publication_id = Column(ForeignKey('publications.id'), primary_key=True)
 
 class User(Base):
     __tablename__ = 'users'
@@ -22,6 +29,8 @@ class User(Base):
     hashed_password = Column(String(256))
     disabled = Column(Boolean,default=False)
     created_date = Column(DateTime,default=datetime.datetime.utcnow)
+    publication_user = relationship("Publication", back_populates="owner_user")
+    
     publications = relationship("Publication", secondary="publication_authors", back_populates='users')
 
 class Publication(Base):
@@ -34,9 +43,12 @@ class Publication(Base):
     status = Column(String(256),default="activer")
     created_date = Column(DateTime,default=datetime.datetime.utcnow)
     owner_id = Column(Integer, ForeignKey("signales.id"))
+    user_id = Column(Integer, ForeignKey("users.id"))
 
     owner = relationship("Signale", back_populates="post")
     users = relationship("User", secondary="publication_authors", back_populates='publications')
+    owner_user = relationship("User", back_populates="publication_user")
+    
 
 class Signale(Base):
     __tablename__ = 'signales'

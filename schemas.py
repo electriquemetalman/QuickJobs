@@ -1,4 +1,4 @@
-from typing import Optional,Union
+from typing import Optional,Union, List
 from xmlrpc.client import boolean
 from pydantic import BaseModel, EmailStr
 import datetime
@@ -16,8 +16,8 @@ class User (BaseModel):
     firs_name: Optional[str]
     last_name: Optional[str]
     phone_nomber: Optional[str]
-    email: Optional[str]
-    type: EmailStr
+    email: EmailStr
+    type: Optional[str]
     description: Optional[str]
     profile: Optional[str]
     disabled: Optional[bool]
@@ -56,10 +56,7 @@ class Login_user (BaseModel):
                 "email": "email",
                 "hashed_password": "hashed_password"
             }
-        }                
-
-class UserInDB(User):
-    hashed_password: str    
+        }                    
 
 class PublicationCreate(BaseModel):        
     intituler: str
@@ -69,6 +66,7 @@ class PublicationCreate(BaseModel):
     status: Optional[str]
     created_date: Optional[datetime.datetime]
     owner_id: Optional[int]
+    user_id: Optional[int]
 
     class Config:
         orm_mode=True
@@ -87,7 +85,27 @@ class PublicationValidate(BaseModel):
             "example": {
                 "is_validate": "True/False"
             }
-        }        
+        }
+
+class Publication (BaseModel):
+    intituler: Optional[str]
+    description: Optional[str]
+    image: Optional[str]
+    is_validate: Optional[str]
+    status: Optional[str]
+    created_date: Optional[datetime.datetime]
+    class Config:
+        orm_mode=True
+
+class PublicationAuthor(BaseModel):
+    user_id: int
+    publication_id: int                    
+
+class PublicationSchema(Publication):
+    users: List[User]
+
+class UserSchema(User):
+    Publications: List[Publication]           
 
 class SignaleCreate(BaseModel):
     id: int
